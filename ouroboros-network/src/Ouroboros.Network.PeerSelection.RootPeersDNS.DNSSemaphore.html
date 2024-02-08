@@ -1,0 +1,101 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span>
+</span><span id="line-2"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore</span><span>
+</span><span id="line-3"></span><span>  </span><span class="hs-special">(</span><span> </span><span class="annot"><span class="hs-comment">-- * DNS semaphore</span></span><span>
+</span><span id="line-4"></span><span>    </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier">DNSSemaphore</span></a></span><span>
+</span><span id="line-5"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#newLedgerAndPublicRootDNSSemaphore"><span class="hs-identifier">newLedgerAndPublicRootDNSSemaphore</span></a></span><span>
+</span><span id="line-6"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#newDNSLocalRootSemaphore"><span class="hs-identifier">newDNSLocalRootSemaphore</span></a></span><span>
+</span><span id="line-7"></span><span>  </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#withDNSSemaphore"><span class="hs-identifier">withDNSSemaphore</span></a></span><span>
+</span><span id="line-8"></span><span>  </span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-9"></span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Concurrent.Class.MonadSTM.Strict</span></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Concurrent.Class.MonadSTM.TSem</span></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Monad.Class.MonadThrow</span></span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="hs-comment">-- | Maximal concurrency when resolving DNS names of root and ledger peers.</span><span>
+</span><span id="line-15"></span><span class="hs-comment">--</span><span>
+</span><span id="line-16"></span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#maxDNSConcurrency"><span class="hs-identifier hs-type">maxDNSConcurrency</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/ghc-bignum-1.3/src/GHC.Num.Integer.html#Integer"><span class="hs-identifier hs-type">Integer</span></a></span><span>
+</span><span id="line-17"></span><span id="maxDNSConcurrency"><span class="annot"><span class="annottext">maxDNSConcurrency :: Integer
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#maxDNSConcurrency"><span class="hs-identifier hs-var hs-var">maxDNSConcurrency</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Integer
+</span><span class="hs-number">8</span></span><span>
+</span><span id="line-18"></span><span>
+</span><span id="line-19"></span><span class="hs-comment">-- | Maximal concurrency when resolving DNS names of local root peers.</span><span>
+</span><span id="line-20"></span><span class="hs-comment">--</span><span>
+</span><span id="line-21"></span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#maxDNSLocalRootConcurrency"><span class="hs-identifier hs-type">maxDNSLocalRootConcurrency</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/ghc-bignum-1.3/src/GHC.Num.Integer.html#Integer"><span class="hs-identifier hs-type">Integer</span></a></span><span>
+</span><span id="line-22"></span><span id="maxDNSLocalRootConcurrency"><span class="annot"><span class="annottext">maxDNSLocalRootConcurrency :: Integer
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#maxDNSLocalRootConcurrency"><span class="hs-identifier hs-var hs-var">maxDNSLocalRootConcurrency</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Integer
+</span><span class="hs-number">2</span></span><span>
+</span><span id="line-23"></span><span>
+</span><span id="line-24"></span><span class="hs-comment">-- | A semaphore used to limit concurrency of dns names resolution.</span><span>
+</span><span id="line-25"></span><span class="hs-comment">--</span><span>
+</span><span id="line-26"></span><span class="hs-keyword">newtype</span><span> </span><span id="DNSSemaphore"><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-var">DNSSemaphore</span></a></span></span><span> </span><span id="local-6989586621679214398"><span class="annot"><a href="#local-6989586621679214398"><span class="hs-identifier hs-type">m</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="DNSSemaphore"><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-var">DNSSemaphore</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">TSem</span></span><span> </span><span class="annot"><a href="#local-6989586621679214398"><span class="hs-identifier hs-type">m</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-27"></span><span>
+</span><span id="line-28"></span><span class="hs-comment">-- | Create a `DNSSemaphore` for root and ledger peers.</span><span>
+</span><span id="line-29"></span><span class="hs-comment">--</span><span>
+</span><span id="line-30"></span><span id="local-6989586621679214389"><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#newLedgerAndPublicRootDNSSemaphore"><span class="hs-identifier hs-type">newLedgerAndPublicRootDNSSemaphore</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadSTM</span></span><span> </span><span class="annot"><a href="#local-6989586621679214389"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214389"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-type">DNSSemaphore</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214389"><span class="hs-identifier hs-type">m</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-31"></span><span id="newLedgerAndPublicRootDNSSemaphore"><span class="annot"><span class="annottext">newLedgerAndPublicRootDNSSemaphore :: forall (m :: * -&gt; *). MonadSTM m =&gt; m (DNSSemaphore m)
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#newLedgerAndPublicRootDNSSemaphore"><span class="hs-identifier hs-var hs-var">newLedgerAndPublicRootDNSSemaphore</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TSem m -&gt; DNSSemaphore m
+forall (m :: * -&gt; *). TSem m -&gt; DNSSemaphore m
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-var">DNSSemaphore</span></a></span><span> </span><span class="annot"><span class="annottext">(TSem m -&gt; DNSSemaphore m) -&gt; m (TSem m) -&gt; m (DNSSemaphore m)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">STM m (TSem m) -&gt; m (TSem m)
+forall a. HasCallStack =&gt; STM m a -&gt; m a
+forall (m :: * -&gt; *) a.
+(MonadSTM m, HasCallStack) =&gt;
+STM m a -&gt; m a
+</span><span class="hs-identifier hs-var">atomically</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Integer -&gt; STM m (TSem m)
+forall (m :: * -&gt; *). MonadSTM m =&gt; Integer -&gt; STM m (TSem m)
+</span><span class="hs-identifier hs-var">newTSem</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#maxDNSConcurrency"><span class="hs-identifier hs-var">maxDNSConcurrency</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-32"></span><span>
+</span><span id="line-33"></span><span class="hs-comment">-- | Create a `DNSSemaphore` for local root peers.</span><span>
+</span><span id="line-34"></span><span class="hs-comment">--</span><span>
+</span><span id="line-35"></span><span id="local-6989586621679214404"><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#newDNSLocalRootSemaphore"><span class="hs-identifier hs-type">newDNSLocalRootSemaphore</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadSTM</span></span><span> </span><span class="annot"><a href="#local-6989586621679214404"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">STM</span></span><span> </span><span class="annot"><a href="#local-6989586621679214404"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-type">DNSSemaphore</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214404"><span class="hs-identifier hs-type">m</span></a></span><span class="hs-special">)</span></span><span>
+</span><span id="line-36"></span><span id="newDNSLocalRootSemaphore"><span class="annot"><span class="annottext">newDNSLocalRootSemaphore :: forall (m :: * -&gt; *). MonadSTM m =&gt; STM m (DNSSemaphore m)
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#newDNSLocalRootSemaphore"><span class="hs-identifier hs-var hs-var">newDNSLocalRootSemaphore</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TSem m -&gt; DNSSemaphore m
+forall (m :: * -&gt; *). TSem m -&gt; DNSSemaphore m
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-var">DNSSemaphore</span></a></span><span> </span><span class="annot"><span class="annottext">(TSem m -&gt; DNSSemaphore m)
+-&gt; STM m (TSem m) -&gt; STM m (DNSSemaphore m)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Integer -&gt; STM m (TSem m)
+forall (m :: * -&gt; *). MonadSTM m =&gt; Integer -&gt; STM m (TSem m)
+</span><span class="hs-identifier hs-var">newTSem</span></span><span> </span><span class="annot"><span class="annottext">Integer
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#maxDNSLocalRootConcurrency"><span class="hs-identifier hs-var">maxDNSLocalRootConcurrency</span></a></span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span class="hs-comment">-- | Run a computation by attempting to acquire the semaphore first.</span><span>
+</span><span id="line-39"></span><span class="hs-comment">-- On termination or failure free the semaphore</span><span>
+</span><span id="line-40"></span><span class="hs-comment">--</span><span>
+</span><span id="line-41"></span><span id="local-6989586621679214406"><span id="local-6989586621679214408"><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#withDNSSemaphore"><span class="hs-identifier hs-type">withDNSSemaphore</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">MonadSTM</span></span><span> </span><span class="annot"><a href="#local-6989586621679214406"><span class="hs-identifier hs-type">m</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadThrow</span></span><span> </span><span class="annot"><a href="#local-6989586621679214406"><span class="hs-identifier hs-type">m</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-type">DNSSemaphore</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214406"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214406"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214408"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214406"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214408"><span class="hs-identifier hs-type">a</span></a></span></span></span><span>
+</span><span id="line-42"></span><span id="withDNSSemaphore"><span class="annot"><span class="annottext">withDNSSemaphore :: forall (m :: * -&gt; *) a.
+(MonadSTM m, MonadThrow m) =&gt;
+DNSSemaphore m -&gt; m a -&gt; m a
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#withDNSSemaphore"><span class="hs-identifier hs-var hs-var">withDNSSemaphore</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-type">DNSSemaphore</span></a></span><span> </span><span id="local-6989586621679214457"><span class="annot"><span class="annottext">TSem m
+</span><a href="#local-6989586621679214457"><span class="hs-identifier hs-var">s</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-43"></span><span>    </span><span class="annot"><span class="annottext">m () -&gt; m () -&gt; m a -&gt; m a
+forall a b c. m a -&gt; m b -&gt; m c -&gt; m c
+forall (m :: * -&gt; *) a b c.
+MonadThrow m =&gt;
+m a -&gt; m b -&gt; m c -&gt; m c
+</span><span class="hs-identifier hs-var">bracket_</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">STM m () -&gt; m ()
+forall a. HasCallStack =&gt; STM m a -&gt; m a
+forall (m :: * -&gt; *) a.
+(MonadSTM m, HasCallStack) =&gt;
+STM m a -&gt; m a
+</span><span class="hs-identifier hs-var">atomically</span></span><span> </span><span class="annot"><span class="annottext">(STM m () -&gt; m ()) -&gt; STM m () -&gt; m ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">TSem m -&gt; STM m ()
+forall (m :: * -&gt; *). MonadSTM m =&gt; TSem m -&gt; STM m ()
+</span><span class="hs-identifier hs-var">waitTSem</span></span><span> </span><span class="annot"><span class="annottext">TSem m
+</span><a href="#local-6989586621679214457"><span class="hs-identifier hs-var">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-44"></span><span>             </span><span class="hs-special">(</span><span class="annot"><span class="annottext">STM m () -&gt; m ()
+forall a. HasCallStack =&gt; STM m a -&gt; m a
+forall (m :: * -&gt; *) a.
+(MonadSTM m, HasCallStack) =&gt;
+STM m a -&gt; m a
+</span><span class="hs-identifier hs-var">atomically</span></span><span> </span><span class="annot"><span class="annottext">(STM m () -&gt; m ()) -&gt; STM m () -&gt; m ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">TSem m -&gt; STM m ()
+forall (m :: * -&gt; *). MonadSTM m =&gt; TSem m -&gt; STM m ()
+</span><span class="hs-identifier hs-var">signalTSem</span></span><span> </span><span class="annot"><span class="annottext">TSem m
+</span><a href="#local-6989586621679214457"><span class="hs-identifier hs-var">s</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span></pre></body></html>

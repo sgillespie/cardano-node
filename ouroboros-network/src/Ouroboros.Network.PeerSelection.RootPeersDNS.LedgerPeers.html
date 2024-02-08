@@ -1,0 +1,437 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE BangPatterns        #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE DerivingStrategies  #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE GADTs               #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE NamedFieldPuns      #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><span id="line-6"></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers.html#resolveLedgerPeers"><span class="hs-identifier">resolveLedgerPeers</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Control.Monad.html"><span class="hs-identifier">Control.Monad</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#when"><span class="hs-identifier">when</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-10"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Monad.Class.MonadAsync</span></span><span>
+</span><span id="line-11"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Tracer</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Tracer</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">traceWith</span></span><span class="hs-special">)</span><span>
+</span><span id="line-12"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Data.IP</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">IP</span></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Strict.html"><span class="hs-identifier">Data.Map.Strict</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#Map"><span class="hs-identifier">Map</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Strict.html"><span class="hs-identifier">Data.Map.Strict</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Map</span></span><span>
+</span><span id="line-15"></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Foldable.html"><span class="hs-identifier">Data.Foldable</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Foldable.html#foldlM"><span class="hs-identifier">foldlM</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-17"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.html"><span class="hs-identifier">Data.Set</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier">Set</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.html"><span class="hs-identifier">Data.Set</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Set</span></span><span>
+</span><span id="line-19"></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Concurrent.Class.MonadSTM.Strict</span></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Control.Monad.Class.MonadThrow</span></span><span>
+</span><span id="line-22"></span><span>
+</span><span id="line-23"></span><span>
+</span><span id="line-24"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Network.DNS</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">DNS</span></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Network.Socket</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Socket</span></span><span>
+</span><span id="line-26"></span><span>
+</span><span id="line-27"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.LedgerPeers.Common.html"><span class="hs-identifier">Ouroboros.Network.PeerSelection.LedgerPeers.Common</span></a></span><span>
+</span><span id="line-28"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><span class="hs-identifier">Ouroboros.Network.PeerSelection.RelayAccessPoint</span></span><span>
+</span><span id="line-29"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html"><span class="hs-identifier">Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions</span></a></span><span>
+</span><span id="line-30"></span><span>                     </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#DNSActions"><span class="hs-identifier">DNSActions</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#DNSorIOError"><span class="hs-identifier">DNSorIOError</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#Resource"><span class="hs-identifier">Resource</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-31"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html"><span class="hs-identifier">Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore</span></a></span><span>
+</span><span id="line-32"></span><span>                     </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier">DNSSemaphore</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#withDNSSemaphore"><span class="hs-identifier">withDNSSemaphore</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-33"></span><span>
+</span><span id="line-34"></span><span class="hs-comment">-- | Provides DNS resolution functionality.</span><span>
+</span><span id="line-35"></span><span class="hs-comment">--</span><span>
+</span><span id="line-36"></span><span class="hs-comment">-- Concurrently resolve DNS names, respecting the 'maxDNSConcurrency' limit.</span><span>
+</span><span id="line-37"></span><span class="hs-comment">--</span><span>
+</span><span id="line-38"></span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers.html#resolveLedgerPeers"><span class="hs-identifier hs-type">resolveLedgerPeers</span></a></span><span>
+</span><span id="line-39"></span><span>  </span><span class="hs-glyph">::</span><span> </span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679214462"><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span></span><span> </span><span id="local-6989586621679214461"><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span></span><span> </span><span id="local-6989586621679214473"><span class="annot"><a href="#local-6989586621679214473"><span class="hs-identifier hs-type">resolver</span></a></span></span><span> </span><span id="local-6989586621679214465"><span class="annot"><a href="#local-6989586621679214465"><span class="hs-identifier hs-type">exception</span></a></span></span><span class="hs-operator">.</span><span>
+</span><span id="line-40"></span><span>     </span><span class="hs-special">(</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/ghc-prim-0.10.0/src/GHC.Classes.html#Ord"><span class="hs-identifier hs-type">Ord</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span>
+</span><span id="line-41"></span><span>     </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadThrow</span></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span>
+</span><span id="line-42"></span><span>     </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadAsync</span></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span>
+</span><span id="line-43"></span><span>     </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Exception.Type.html#Exception"><span class="hs-identifier hs-type">Exception</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214465"><span class="hs-identifier hs-type">exception</span></a></span><span>
+</span><span id="line-44"></span><span>     </span><span class="hs-special">)</span><span>
+</span><span id="line-45"></span><span>  </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Tracer</span></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.LedgerPeers.Common.html#TraceLedgerPeers"><span class="hs-identifier hs-type">TraceLedgerPeers</span></a></span><span>
+</span><span id="line-46"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">IP.IP</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Socket.PortNumber</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-47"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#DNSSemaphore"><span class="hs-identifier hs-type">DNSSemaphore</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span>
+</span><span id="line-48"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">DNS.ResolvConf</span></span><span>
+</span><span id="line-49"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#DNSActions"><span class="hs-identifier hs-type">DNSActions</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214473"><span class="hs-identifier hs-type">resolver</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214465"><span class="hs-identifier hs-type">exception</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span>
+</span><span id="line-50"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">DomainAccessPoint</span></span><span class="hs-special">]</span><span>
+</span><span id="line-51"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#Map"><span class="hs-identifier hs-type">Map</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">DomainAccessPoint</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier hs-type">Set</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-52"></span><span id="resolveLedgerPeers"><span class="annot"><span class="annottext">resolveLedgerPeers :: forall (m :: * -&gt; *) peerAddr resolver exception.
+(Ord peerAddr, MonadThrow m, MonadAsync m, Exception exception) =&gt;
+Tracer m TraceLedgerPeers
+-&gt; (IP -&gt; PortNumber -&gt; peerAddr)
+-&gt; DNSSemaphore m
+-&gt; ResolvConf
+-&gt; DNSActions resolver exception m
+-&gt; [DomainAccessPoint]
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers.html#resolveLedgerPeers"><span class="hs-identifier hs-var hs-var">resolveLedgerPeers</span></a></span></span><span> </span><span id="local-6989586621679214631"><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers
+</span><a href="#local-6989586621679214631"><span class="hs-identifier hs-var">tracer</span></a></span></span><span>
+</span><span id="line-53"></span><span>                   </span><span id="local-6989586621679214632"><span class="annot"><span class="annottext">IP -&gt; PortNumber -&gt; peerAddr
+</span><a href="#local-6989586621679214632"><span class="hs-identifier hs-var">toPeerAddr</span></a></span></span><span>
+</span><span id="line-54"></span><span>                   </span><span id="local-6989586621679214633"><span class="annot"><span class="annottext">DNSSemaphore m
+</span><a href="#local-6989586621679214633"><span class="hs-identifier hs-var">dnsSemaphore</span></a></span></span><span>
+</span><span id="line-55"></span><span>                   </span><span id="local-6989586621679214634"><span class="annot"><span class="annottext">ResolvConf
+</span><a href="#local-6989586621679214634"><span class="hs-identifier hs-var">resolvConf</span></a></span></span><span>
+</span><span id="line-56"></span><span>                   </span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#DNSActions"><span class="hs-identifier hs-type">DNSActions</span></a></span><span> </span><span class="hs-special">{</span><span>
+</span><span id="line-57"></span><span>                      </span><span id="local-6989586621679214636"><span class="annot"><span class="annottext">ResolvConf
+-&gt; m (Resource m (Either (DNSorIOError exception) resolver))
+dnsResolverResource :: ResolvConf
+-&gt; m (Resource m (Either (DNSorIOError exception) resolver))
+dnsResolverResource :: forall resolver exception (m :: * -&gt; *).
+DNSActions resolver exception m
+-&gt; ResolvConf
+-&gt; m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214636"><span class="hs-identifier hs-var hs-var">dnsResolverResource</span></a></span></span><span class="hs-special">,</span><span>
+</span><span id="line-58"></span><span>                      </span><span id="local-6989586621679214638"><span class="annot"><span class="annottext">ResolvConf -&gt; resolver -&gt; Domain -&gt; m ([DNSError], [(IP, TTL)])
+dnsLookupWithTTL :: ResolvConf -&gt; resolver -&gt; Domain -&gt; m ([DNSError], [(IP, TTL)])
+dnsLookupWithTTL :: forall resolver exception (m :: * -&gt; *).
+DNSActions resolver exception m
+-&gt; ResolvConf -&gt; resolver -&gt; Domain -&gt; m ([DNSError], [(IP, TTL)])
+</span><a href="#local-6989586621679214638"><span class="hs-identifier hs-var hs-var">dnsLookupWithTTL</span></a></span></span><span>
+</span><span id="line-59"></span><span>                    </span><span class="hs-special">}</span><span>
+</span><span id="line-60"></span><span>                   </span><span id="local-6989586621679214640"><span class="annot"><span class="annottext">[DomainAccessPoint]
+</span><a href="#local-6989586621679214640"><span class="hs-identifier hs-var">domains</span></a></span></span><span>
+</span><span id="line-61"></span><span>                   </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-62"></span><span>    </span><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers -&gt; TraceLedgerPeers -&gt; m ()
+forall (m :: * -&gt; *) a. Tracer m a -&gt; a -&gt; m ()
+</span><span class="hs-identifier hs-var">traceWith</span></span><span> </span><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers
+</span><a href="#local-6989586621679214631"><span class="hs-identifier hs-var">tracer</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[DomainAccessPoint] -&gt; TraceLedgerPeers
+</span><a href="Ouroboros.Network.PeerSelection.LedgerPeers.Common.html#TraceLedgerPeersDomains"><span class="hs-identifier hs-var">TraceLedgerPeersDomains</span></a></span><span> </span><span class="annot"><span class="annottext">[DomainAccessPoint]
+</span><a href="#local-6989586621679214640"><span class="hs-identifier hs-var">domains</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-63"></span><span>    </span><span id="local-6989586621679214642"><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+</span><a href="#local-6989586621679214642"><span class="hs-identifier hs-var">rr</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">ResolvConf
+-&gt; m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214636"><span class="hs-identifier hs-var">dnsResolverResource</span></a></span><span> </span><span class="annot"><span class="annottext">ResolvConf
+</span><a href="#local-6989586621679214634"><span class="hs-identifier hs-var">resolvConf</span></a></span><span>
+</span><span id="line-64"></span><span>    </span><span id="local-6989586621679214643"><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214643"><span class="hs-identifier hs-var">resourceVar</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+-&gt; m (StrictTVar
+        m (Resource m (Either (DNSorIOError exception) resolver)))
+forall (m :: * -&gt; *) a. MonadSTM m =&gt; a -&gt; m (StrictTVar m a)
+</span><span class="hs-identifier hs-var">newTVarIO</span></span><span> </span><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+</span><a href="#local-6989586621679214642"><span class="hs-identifier hs-var">rr</span></a></span><span>
+</span><span id="line-65"></span><span>    </span><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+</span><a href="#local-6989586621679214645"><span class="hs-identifier hs-var">resolveDomains</span></a></span><span> </span><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214643"><span class="hs-identifier hs-var">resourceVar</span></a></span><span>
+</span><span id="line-66"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-67"></span><span>    </span><span class="annot"><a href="#local-6989586621679214645"><span class="hs-identifier hs-type">resolveDomains</span></a></span><span>
+</span><span id="line-68"></span><span>      </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">StrictTVar</span></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#Resource"><span class="hs-identifier hs-type">Resource</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Either.html#Either"><span class="hs-identifier hs-type">Either</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#DNSorIOError"><span class="hs-identifier hs-type">DNSorIOError</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214465"><span class="hs-identifier hs-type">exception</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><a href="#local-6989586621679214473"><span class="hs-identifier hs-type">resolver</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-69"></span><span>      </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#Map"><span class="hs-identifier hs-type">Map</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">DomainAccessPoint</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier hs-type">Set</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-70"></span><span>    </span><span id="local-6989586621679214645"><span class="annot"><span class="annottext">resolveDomains :: StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+</span><a href="#local-6989586621679214645"><span class="hs-identifier hs-var hs-var">resolveDomains</span></a></span></span><span> </span><span id="local-6989586621679214646"><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214646"><span class="hs-identifier hs-var">resourceVar</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-71"></span><span>        </span><span id="local-6989586621679214647"><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+</span><a href="#local-6989586621679214647"><span class="hs-identifier hs-var">rr</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">STM m (Resource m (Either (DNSorIOError exception) resolver))
+-&gt; m (Resource m (Either (DNSorIOError exception) resolver))
+forall a. HasCallStack =&gt; STM m a -&gt; m a
+forall (m :: * -&gt; *) a.
+(MonadSTM m, HasCallStack) =&gt;
+STM m a -&gt; m a
+</span><span class="hs-identifier hs-var">atomically</span></span><span> </span><span class="annot"><span class="annottext">(STM m (Resource m (Either (DNSorIOError exception) resolver))
+ -&gt; m (Resource m (Either (DNSorIOError exception) resolver)))
+-&gt; STM m (Resource m (Either (DNSorIOError exception) resolver))
+-&gt; m (Resource m (Either (DNSorIOError exception) resolver))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+-&gt; STM m (Resource m (Either (DNSorIOError exception) resolver))
+forall (m :: * -&gt; *) a. MonadSTM m =&gt; StrictTVar m a -&gt; STM m a
+</span><span class="hs-identifier hs-var">readTVar</span></span><span> </span><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214646"><span class="hs-identifier hs-var">resourceVar</span></a></span><span>
+</span><span id="line-72"></span><span>        </span><span class="hs-special">(</span><span id="local-6989586621679214650"><span class="annot"><span class="annottext">Either (DNSorIOError exception) resolver
+</span><a href="#local-6989586621679214650"><span class="hs-identifier hs-var">er</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679214651"><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+</span><a href="#local-6989586621679214651"><span class="hs-identifier hs-var">rr'</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+-&gt; m (Either (DNSorIOError exception) resolver,
+      Resource m (Either (DNSorIOError exception) resolver))
+forall (m :: * -&gt; *) a. Resource m a -&gt; m (a, Resource m a)
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#withResource"><span class="hs-identifier hs-var">withResource</span></a></span><span> </span><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+</span><a href="#local-6989586621679214647"><span class="hs-identifier hs-var">rr</span></a></span><span>
+</span><span id="line-73"></span><span>        </span><span class="annot"><span class="annottext">STM m () -&gt; m ()
+forall a. HasCallStack =&gt; STM m a -&gt; m a
+forall (m :: * -&gt; *) a.
+(MonadSTM m, HasCallStack) =&gt;
+STM m a -&gt; m a
+</span><span class="hs-identifier hs-var">atomically</span></span><span> </span><span class="annot"><span class="annottext">(STM m () -&gt; m ()) -&gt; STM m () -&gt; m ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+-&gt; Resource m (Either (DNSorIOError exception) resolver)
+-&gt; STM m ()
+forall (m :: * -&gt; *) a.
+MonadSTM m =&gt;
+StrictTVar m a -&gt; a -&gt; STM m ()
+</span><span class="hs-identifier hs-var">writeTVar</span></span><span> </span><span class="annot"><span class="annottext">StrictTVar
+  m (Resource m (Either (DNSorIOError exception) resolver))
+</span><a href="#local-6989586621679214646"><span class="hs-identifier hs-var">resourceVar</span></a></span><span> </span><span class="annot"><span class="annottext">Resource m (Either (DNSorIOError exception) resolver)
+</span><a href="#local-6989586621679214651"><span class="hs-identifier hs-var">rr'</span></a></span><span>
+</span><span id="line-74"></span><span>        </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Either (DNSorIOError exception) resolver
+</span><a href="#local-6989586621679214650"><span class="hs-identifier hs-var">er</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-75"></span><span>          </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Either.html#Left"><span class="hs-identifier hs-type">Left</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#DNSError"><span class="hs-identifier hs-type">DNSError</span></a></span><span> </span><span id="local-6989586621679214655"><span class="annot"><span class="annottext">DNSError
+</span><a href="#local-6989586621679214655"><span class="hs-identifier hs-var">err</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DNSError -&gt; m (Map DomainAccessPoint (Set peerAddr))
+forall e a. Exception e =&gt; e -&gt; m a
+forall (m :: * -&gt; *) e a. (MonadThrow m, Exception e) =&gt; e -&gt; m a
+</span><span class="hs-identifier hs-var">throwIO</span></span><span> </span><span class="annot"><span class="annottext">DNSError
+</span><a href="#local-6989586621679214655"><span class="hs-identifier hs-var">err</span></a></span><span>
+</span><span id="line-76"></span><span>          </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Either.html#Left"><span class="hs-identifier hs-type">Left</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSActions.html#IOError"><span class="hs-identifier hs-type">IOError</span></a></span><span>  </span><span id="local-6989586621679214658"><span class="annot"><span class="annottext">exception
+</span><a href="#local-6989586621679214658"><span class="hs-identifier hs-var">err</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">exception -&gt; m (Map DomainAccessPoint (Set peerAddr))
+forall e a. Exception e =&gt; e -&gt; m a
+forall (m :: * -&gt; *) e a. (MonadThrow m, Exception e) =&gt; e -&gt; m a
+</span><span class="hs-identifier hs-var">throwIO</span></span><span> </span><span class="annot"><span class="annottext">exception
+</span><a href="#local-6989586621679214658"><span class="hs-identifier hs-var">err</span></a></span><span>
+</span><span id="line-77"></span><span>          </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Either.html#Right"><span class="hs-identifier hs-type">Right</span></a></span><span> </span><span id="local-6989586621679214659"><span class="annot"><span class="annottext">resolver
+</span><a href="#local-6989586621679214659"><span class="hs-identifier hs-var">resolver</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-78"></span><span>            </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679214660"><span class="annot"><span class="annottext">lookups :: [m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+</span><a href="#local-6989586621679214660"><span class="hs-identifier hs-var hs-var">lookups</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-79"></span><span>                  </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214661"><span class="hs-identifier hs-var">domain</span></a></span><span>
+</span><span id="line-80"></span><span>                      </span><span class="annot"><span class="annottext">(([DNSError], [(IP, TTL)])
+ -&gt; (DomainAccessPoint, ([DNSError], [(IP, TTL)])))
+-&gt; m ([DNSError], [(IP, TTL)])
+-&gt; m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">DNSSemaphore m
+-&gt; m ([DNSError], [(IP, TTL)]) -&gt; m ([DNSError], [(IP, TTL)])
+forall (m :: * -&gt; *) a.
+(MonadSTM m, MonadThrow m) =&gt;
+DNSSemaphore m -&gt; m a -&gt; m a
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.DNSSemaphore.html#withDNSSemaphore"><span class="hs-identifier hs-var">withDNSSemaphore</span></a></span><span> </span><span class="annot"><span class="annottext">DNSSemaphore m
+</span><a href="#local-6989586621679214633"><span class="hs-identifier hs-var">dnsSemaphore</span></a></span><span>
+</span><span id="line-81"></span><span>                            </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ResolvConf -&gt; resolver -&gt; Domain -&gt; m ([DNSError], [(IP, TTL)])
+</span><a href="#local-6989586621679214638"><span class="hs-identifier hs-var">dnsLookupWithTTL</span></a></span><span>
+</span><span id="line-82"></span><span>                              </span><span class="annot"><span class="annottext">ResolvConf
+</span><a href="#local-6989586621679214634"><span class="hs-identifier hs-var">resolvConf</span></a></span><span>
+</span><span id="line-83"></span><span>                              </span><span class="annot"><span class="annottext">resolver
+</span><a href="#local-6989586621679214659"><span class="hs-identifier hs-var">resolver</span></a></span><span>
+</span><span id="line-84"></span><span>                              </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DomainAccessPoint -&gt; Domain
+</span><span class="hs-identifier hs-var">dapDomain</span></span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214661"><span class="hs-identifier hs-var">domain</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-85"></span><span>                  </span><span class="hs-glyph">|</span><span> </span><span id="local-6989586621679214661"><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214661"><span class="hs-identifier hs-var">domain</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">[DomainAccessPoint]
+</span><a href="#local-6989586621679214640"><span class="hs-identifier hs-var">domains</span></a></span><span> </span><span class="hs-special">]</span><span>
+</span><span id="line-86"></span><span>            </span><span class="hs-comment">-- The timeouts here are handled by the 'lookupWithTTL'. They're</span><span>
+</span><span id="line-87"></span><span>            </span><span class="hs-comment">-- configured via the DNS.ResolvConf resolvTimeout field and</span><span>
+</span><span id="line-88"></span><span>            </span><span class="hs-comment">-- defaults to 3 sec.</span><span>
+</span><span id="line-89"></span><span>            </span><span id="local-6989586621679214664"><span class="annot"><span class="annottext">[(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+</span><a href="#local-6989586621679214664"><span class="hs-identifier hs-var">results</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">[m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+-&gt; ([Async m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+    -&gt; m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))])
+-&gt; m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+forall (m :: * -&gt; *) a b.
+MonadAsync m =&gt;
+[m a] -&gt; ([Async m a] -&gt; m b) -&gt; m b
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers.html#withAsyncAll"><span class="hs-identifier hs-var">withAsyncAll</span></a></span><span> </span><span class="annot"><span class="annottext">[m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+</span><a href="#local-6989586621679214660"><span class="hs-identifier hs-var">lookups</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">STM m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+-&gt; m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+forall a. HasCallStack =&gt; STM m a -&gt; m a
+forall (m :: * -&gt; *) a.
+(MonadSTM m, HasCallStack) =&gt;
+STM m a -&gt; m a
+</span><span class="hs-identifier hs-var">atomically</span></span><span> </span><span class="annot"><span class="annottext">(STM m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+ -&gt; m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))])
+-&gt; ([Async m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+    -&gt; STM m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))])
+-&gt; [Async m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+-&gt; m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">(Async m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+ -&gt; STM m (DomainAccessPoint, ([DNSError], [(IP, TTL)])))
+-&gt; [Async m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+-&gt; STM m [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="annot"><span class="annottext">Async m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+-&gt; STM m (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+forall a. Async m a -&gt; STM m a
+forall (m :: * -&gt; *) a. MonadAsync m =&gt; Async m a -&gt; STM m a
+</span><span class="hs-identifier hs-var">waitSTM</span></span><span class="hs-special">)</span><span>
+</span><span id="line-90"></span><span>            </span><span class="annot"><span class="annottext">(Map DomainAccessPoint (Set peerAddr)
+ -&gt; (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+ -&gt; m (Map DomainAccessPoint (Set peerAddr)))
+-&gt; Map DomainAccessPoint (Set peerAddr)
+-&gt; [(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+forall (t :: * -&gt; *) (m :: * -&gt; *) b a.
+(Foldable t, Monad m) =&gt;
+(b -&gt; a -&gt; m b) -&gt; b -&gt; t a -&gt; m b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Foldable.html#foldlM"><span class="hs-identifier hs-var">foldlM</span></a></span><span> </span><span class="annot"><span class="annottext">Map DomainAccessPoint (Set peerAddr)
+-&gt; (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+</span><a href="#local-6989586621679214669"><span class="hs-identifier hs-var">processResult</span></a></span><span> </span><span class="annot"><span class="annottext">Map DomainAccessPoint (Set peerAddr)
+forall k a. Map k a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#empty"><span class="hs-identifier hs-var">Map.empty</span></a></span><span> </span><span class="annot"><span class="annottext">[(DomainAccessPoint, ([DNSError], [(IP, TTL)]))]
+</span><a href="#local-6989586621679214664"><span class="hs-identifier hs-var">results</span></a></span><span>
+</span><span id="line-91"></span><span>
+</span><span id="line-92"></span><span>    </span><span class="annot"><a href="#local-6989586621679214669"><span class="hs-identifier hs-type">processResult</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#Map"><span class="hs-identifier hs-type">Map</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">DomainAccessPoint</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier hs-type">Set</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-93"></span><span>                  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">DomainAccessPoint</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">DNS.DNSError</span></span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">IP</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier hs-type">DNS.TTL</span></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-94"></span><span>                  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214462"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#Map"><span class="hs-identifier hs-type">Map</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">DomainAccessPoint</span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier hs-type">Set</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-95"></span><span>    </span><span id="local-6989586621679214669"><span class="annot"><span class="annottext">processResult :: Map DomainAccessPoint (Set peerAddr)
+-&gt; (DomainAccessPoint, ([DNSError], [(IP, TTL)]))
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+</span><a href="#local-6989586621679214669"><span class="hs-identifier hs-var hs-var">processResult</span></a></span></span><span> </span><span id="local-6989586621679214671"><span class="annot"><span class="annottext">Map DomainAccessPoint (Set peerAddr)
+</span><a href="#local-6989586621679214671"><span class="hs-identifier hs-var">mr</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679214672"><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214672"><span class="hs-identifier hs-var">domain</span></a></span></span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679214673"><span class="annot"><span class="annottext">[DNSError]
+</span><a href="#local-6989586621679214673"><span class="hs-identifier hs-var">errs</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679214674"><span class="annot"><span class="annottext">[(IP, TTL)]
+</span><a href="#local-6989586621679214674"><span class="hs-identifier hs-var">ipsttls</span></a></span></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-96"></span><span>        </span><span class="annot"><span class="annottext">(DNSError -&gt; m ()) -&gt; [DNSError] -&gt; m ()
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Foldable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m ()
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Foldable.html#mapM_"><span class="hs-identifier hs-var">mapM_</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers -&gt; TraceLedgerPeers -&gt; m ()
+forall (m :: * -&gt; *) a. Tracer m a -&gt; a -&gt; m ()
+</span><span class="hs-identifier hs-var">traceWith</span></span><span> </span><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers
+</span><a href="#local-6989586621679214631"><span class="hs-identifier hs-var">tracer</span></a></span><span> </span><span class="annot"><span class="annottext">(TraceLedgerPeers -&gt; m ())
+-&gt; (DNSError -&gt; TraceLedgerPeers) -&gt; DNSError -&gt; m ()
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">Domain -&gt; DNSError -&gt; TraceLedgerPeers
+</span><a href="Ouroboros.Network.PeerSelection.LedgerPeers.Common.html#TraceLedgerPeersFailure"><span class="hs-identifier hs-var">TraceLedgerPeersFailure</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DomainAccessPoint -&gt; Domain
+</span><span class="hs-identifier hs-var">dapDomain</span></span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214672"><span class="hs-identifier hs-var">domain</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-97"></span><span>              </span><span class="annot"><span class="annottext">[DNSError]
+</span><a href="#local-6989586621679214673"><span class="hs-identifier hs-var">errs</span></a></span><span>
+</span><span id="line-98"></span><span>        </span><span class="annot"><span class="annottext">Bool -&gt; m () -&gt; m ()
+forall (f :: * -&gt; *). Applicative f =&gt; Bool -&gt; f () -&gt; f ()
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#when"><span class="hs-identifier hs-var">when</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Bool -&gt; Bool
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/ghc-prim-0.10.0/src/GHC.Classes.html#not"><span class="hs-identifier hs-var">not</span></a></span><span> </span><span class="annot"><span class="annottext">(Bool -&gt; Bool) -&gt; Bool -&gt; Bool
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">[(IP, TTL)] -&gt; Bool
+forall a. [a] -&gt; Bool
+forall (t :: * -&gt; *) a. Foldable t =&gt; t a -&gt; Bool
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Foldable.html#null"><span class="hs-identifier hs-var">null</span></a></span><span> </span><span class="annot"><span class="annottext">[(IP, TTL)]
+</span><a href="#local-6989586621679214674"><span class="hs-identifier hs-var">ipsttls</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(m () -&gt; m ()) -&gt; m () -&gt; m ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-99"></span><span>            </span><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers -&gt; TraceLedgerPeers -&gt; m ()
+forall (m :: * -&gt; *) a. Tracer m a -&gt; a -&gt; m ()
+</span><span class="hs-identifier hs-var">traceWith</span></span><span> </span><span class="annot"><span class="annottext">Tracer m TraceLedgerPeers
+</span><a href="#local-6989586621679214631"><span class="hs-identifier hs-var">tracer</span></a></span><span> </span><span class="annot"><span class="annottext">(TraceLedgerPeers -&gt; m ()) -&gt; TraceLedgerPeers -&gt; m ()
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Domain -&gt; [(IP, TTL)] -&gt; TraceLedgerPeers
+</span><a href="Ouroboros.Network.PeerSelection.LedgerPeers.Common.html#TraceLedgerPeersResult"><span class="hs-identifier hs-var">TraceLedgerPeersResult</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DomainAccessPoint -&gt; Domain
+</span><span class="hs-identifier hs-var">dapDomain</span></span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214672"><span class="hs-identifier hs-var">domain</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[(IP, TTL)]
+</span><a href="#local-6989586621679214674"><span class="hs-identifier hs-var">ipsttls</span></a></span><span>
+</span><span id="line-100"></span><span>
+</span><span id="line-101"></span><span>        </span><span class="annot"><span class="annottext">Map DomainAccessPoint (Set peerAddr)
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+forall a. a -&gt; m a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Map DomainAccessPoint (Set peerAddr)
+ -&gt; m (Map DomainAccessPoint (Set peerAddr)))
+-&gt; Map DomainAccessPoint (Set peerAddr)
+-&gt; m (Map DomainAccessPoint (Set peerAddr))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">(Maybe (Set peerAddr) -&gt; Maybe (Set peerAddr))
+-&gt; DomainAccessPoint
+-&gt; Map DomainAccessPoint (Set peerAddr)
+-&gt; Map DomainAccessPoint (Set peerAddr)
+forall k a.
+Ord k =&gt;
+(Maybe a -&gt; Maybe a) -&gt; k -&gt; Map k a -&gt; Map k a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Map.Strict.Internal.html#alter"><span class="hs-identifier hs-var">Map.alter</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Set peerAddr) -&gt; Maybe (Set peerAddr)
+</span><a href="#local-6989586621679214681"><span class="hs-identifier hs-var">addFn</span></a></span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214672"><span class="hs-identifier hs-var">domain</span></a></span><span> </span><span class="annot"><span class="annottext">Map DomainAccessPoint (Set peerAddr)
+</span><a href="#local-6989586621679214671"><span class="hs-identifier hs-var">mr</span></a></span><span>
+</span><span id="line-102"></span><span>      </span><span class="hs-keyword">where</span><span>
+</span><span id="line-103"></span><span>        </span><span class="annot"><a href="#local-6989586621679214681"><span class="hs-identifier hs-type">addFn</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Maybe.html#Maybe"><span class="hs-identifier hs-type">Maybe</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier hs-type">Set</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Maybe.html#Maybe"><span class="hs-identifier hs-type">Maybe</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#Set"><span class="hs-identifier hs-type">Set</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214461"><span class="hs-identifier hs-type">peerAddr</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-104"></span><span>        </span><span id="local-6989586621679214681"><span class="annot"><span class="annottext">addFn :: Maybe (Set peerAddr) -&gt; Maybe (Set peerAddr)
+</span><a href="#local-6989586621679214681"><span class="hs-identifier hs-var hs-var">addFn</span></a></span></span><span> </span><span class="annot"><span class="annottext">Maybe (Set peerAddr)
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-105"></span><span>            </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679214682"><span class="annot"><span class="annottext">ips :: [IP]
+</span><a href="#local-6989586621679214682"><span class="hs-identifier hs-var hs-var">ips</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">((IP, TTL) -&gt; IP) -&gt; [(IP, TTL)] -&gt; [IP]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">(IP, TTL) -&gt; IP
+forall a b. (a, b) -&gt; a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Tuple.html#fst"><span class="hs-identifier hs-var">fst</span></a></span><span> </span><span class="annot"><span class="annottext">[(IP, TTL)]
+</span><a href="#local-6989586621679214674"><span class="hs-identifier hs-var">ipsttls</span></a></span><span>
+</span><span id="line-106"></span><span>                </span><span class="hs-glyph">!</span><span id="local-6989586621679214684"><span class="annot"><span class="annottext">addrs :: [peerAddr]
+</span><a href="#local-6989586621679214684"><span class="hs-identifier hs-var hs-var">addrs</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(IP -&gt; peerAddr) -&gt; [IP] -&gt; [peerAddr]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621679214685"><span class="annot"><span class="annottext">IP
+</span><a href="#local-6989586621679214685"><span class="hs-identifier hs-var">ip</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">IP -&gt; PortNumber -&gt; peerAddr
+</span><a href="#local-6989586621679214632"><span class="hs-identifier hs-var">toPeerAddr</span></a></span><span> </span><span class="annot"><span class="annottext">IP
+</span><a href="#local-6989586621679214685"><span class="hs-identifier hs-var">ip</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DomainAccessPoint -&gt; PortNumber
+</span><span class="hs-identifier hs-var">dapPortNumber</span></span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214672"><span class="hs-identifier hs-var">domain</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-107"></span><span>                             </span><span class="annot"><span class="annottext">[IP]
+</span><a href="#local-6989586621679214682"><span class="hs-identifier hs-var">ips</span></a></span><span>
+</span><span id="line-108"></span><span>                </span><span class="hs-glyph">!</span><span id="local-6989586621679214687"><span class="annot"><span class="annottext">addrSet :: Set peerAddr
+</span><a href="#local-6989586621679214687"><span class="hs-identifier hs-var hs-var">addrSet</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[peerAddr] -&gt; Set peerAddr
+forall a. Ord a =&gt; [a] -&gt; Set a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#fromList"><span class="hs-identifier hs-var">Set.fromList</span></a></span><span> </span><span class="annot"><span class="annottext">[peerAddr]
+</span><a href="#local-6989586621679214684"><span class="hs-identifier hs-var">addrs</span></a></span><span> </span><span class="hs-keyword">in</span><span>
+</span><span id="line-109"></span><span>            </span><span class="annot"><span class="annottext">Set peerAddr -&gt; Maybe (Set peerAddr)
+forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">Set peerAddr
+</span><a href="#local-6989586621679214687"><span class="hs-identifier hs-var">addrSet</span></a></span><span>
+</span><span id="line-110"></span><span>        </span><span class="annot"><a href="#local-6989586621679214681"><span class="hs-identifier hs-var">addFn</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span id="local-6989586621679214689"><span class="annot"><span class="annottext">Set peerAddr
+</span><a href="#local-6989586621679214689"><span class="hs-identifier hs-var">addrSet</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-111"></span><span>            </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621679214690"><span class="annot"><span class="annottext">ips :: [IP]
+</span><a href="#local-6989586621679214690"><span class="hs-identifier hs-var hs-var">ips</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">((IP, TTL) -&gt; IP) -&gt; [(IP, TTL)] -&gt; [IP]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">(IP, TTL) -&gt; IP
+forall a b. (a, b) -&gt; a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/Data.Tuple.html#fst"><span class="hs-identifier hs-var">fst</span></a></span><span> </span><span class="annot"><span class="annottext">[(IP, TTL)]
+</span><a href="#local-6989586621679214674"><span class="hs-identifier hs-var">ipsttls</span></a></span><span>
+</span><span id="line-112"></span><span>                </span><span class="hs-glyph">!</span><span id="local-6989586621679214691"><span class="annot"><span class="annottext">addrs :: [peerAddr]
+</span><a href="#local-6989586621679214691"><span class="hs-identifier hs-var hs-var">addrs</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(IP -&gt; peerAddr) -&gt; [IP] -&gt; [peerAddr]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621679214692"><span class="annot"><span class="annottext">IP
+</span><a href="#local-6989586621679214692"><span class="hs-identifier hs-var">ip</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">IP -&gt; PortNumber -&gt; peerAddr
+</span><a href="#local-6989586621679214632"><span class="hs-identifier hs-var">toPeerAddr</span></a></span><span> </span><span class="annot"><span class="annottext">IP
+</span><a href="#local-6989586621679214692"><span class="hs-identifier hs-var">ip</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DomainAccessPoint -&gt; PortNumber
+</span><span class="hs-identifier hs-var">dapPortNumber</span></span><span> </span><span class="annot"><span class="annottext">DomainAccessPoint
+</span><a href="#local-6989586621679214672"><span class="hs-identifier hs-var">domain</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-113"></span><span>                             </span><span class="annot"><span class="annottext">[IP]
+</span><a href="#local-6989586621679214690"><span class="hs-identifier hs-var">ips</span></a></span><span>
+</span><span id="line-114"></span><span>                </span><span class="hs-glyph">!</span><span id="local-6989586621679214693"><span class="annot"><span class="annottext">addrSet' :: Set peerAddr
+</span><a href="#local-6989586621679214693"><span class="hs-identifier hs-var hs-var">addrSet'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Set peerAddr -&gt; Set peerAddr -&gt; Set peerAddr
+forall a. Ord a =&gt; Set a -&gt; Set a -&gt; Set a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#union"><span class="hs-identifier hs-var">Set.union</span></a></span><span> </span><span class="annot"><span class="annottext">Set peerAddr
+</span><a href="#local-6989586621679214689"><span class="hs-identifier hs-var">addrSet</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[peerAddr] -&gt; Set peerAddr
+forall a. Ord a =&gt; [a] -&gt; Set a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#fromList"><span class="hs-identifier hs-var">Set.fromList</span></a></span><span> </span><span class="annot"><span class="annottext">[peerAddr]
+</span><a href="#local-6989586621679214691"><span class="hs-identifier hs-var">addrs</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">in</span><span>
+</span><span id="line-115"></span><span>            </span><span class="annot"><span class="annottext">Set peerAddr -&gt; Maybe (Set peerAddr)
+forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">Set peerAddr
+</span><a href="#local-6989586621679214693"><span class="hs-identifier hs-var">addrSet'</span></a></span><span>
+</span><span id="line-116"></span><span>
+</span><span id="line-117"></span><span id="local-6989586621679214526"><span id="local-6989586621679214527"><span id="local-6989586621679214528"><span class="annot"><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers.html#withAsyncAll"><span class="hs-identifier hs-type">withAsyncAll</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">MonadAsync</span></span><span> </span><span class="annot"><a href="#local-6989586621679214526"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-special">[</span><span class="annot"><a href="#local-6989586621679214526"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214527"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="annot"><span class="hs-identifier hs-type">Async</span></span><span> </span><span class="annot"><a href="#local-6989586621679214526"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214527"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214526"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214528"><span class="hs-identifier hs-type">b</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679214526"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679214528"><span class="hs-identifier hs-type">b</span></a></span></span></span></span><span>
+</span><span id="line-118"></span><span id="withAsyncAll"><span class="annot"><span class="annottext">withAsyncAll :: forall (m :: * -&gt; *) a b.
+MonadAsync m =&gt;
+[m a] -&gt; ([Async m a] -&gt; m b) -&gt; m b
+</span><a href="Ouroboros.Network.PeerSelection.RootPeersDNS.LedgerPeers.html#withAsyncAll"><span class="hs-identifier hs-var hs-var">withAsyncAll</span></a></span></span><span> </span><span id="local-6989586621679214697"><span class="annot"><span class="annottext">[m a]
+</span><a href="#local-6989586621679214697"><span class="hs-identifier hs-var">xs0</span></a></span></span><span> </span><span id="local-6989586621679214698"><span class="annot"><span class="annottext">[Async m a] -&gt; m b
+</span><a href="#local-6989586621679214698"><span class="hs-identifier hs-var">action</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[Async m a] -&gt; [m a] -&gt; m b
+</span><a href="#local-6989586621679214699"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="annot"><span class="annottext">[m a]
+</span><a href="#local-6989586621679214697"><span class="hs-identifier hs-var">xs0</span></a></span><span>
+</span><span id="line-119"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-120"></span><span>    </span><span id="local-6989586621679214699"><span class="annot"><span class="annottext">go :: [Async m a] -&gt; [m a] -&gt; m b
+</span><a href="#local-6989586621679214699"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span id="local-6989586621679214700"><span class="annot"><span class="annottext">[Async m a]
+</span><a href="#local-6989586621679214700"><span class="hs-keyword hs-var">as</span></a></span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span>     </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[Async m a] -&gt; m b
+</span><a href="#local-6989586621679214698"><span class="hs-identifier hs-var">action</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[Async m a] -&gt; [Async m a]
+forall a. [a] -&gt; [a]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/base-4.18.1.0/src/GHC.List.html#reverse"><span class="hs-identifier hs-var">reverse</span></a></span><span> </span><span class="annot"><span class="annottext">[Async m a]
+</span><a href="#local-6989586621679214700"><span class="hs-keyword hs-var">as</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-121"></span><span>    </span><span class="annot"><a href="#local-6989586621679214699"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span id="local-6989586621679214702"><span class="annot"><span class="annottext">[Async m a]
+</span><a href="#local-6989586621679214702"><span class="hs-keyword hs-var">as</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621679214703"><span class="annot"><span class="annottext">m a
+</span><a href="#local-6989586621679214703"><span class="hs-identifier hs-var">x</span></a></span></span><span class="annot"><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/ghc-prim-0.10.0/src/GHC.Types.html#%3A"><span class="hs-glyph hs-type">:</span></a></span><span id="local-6989586621679214704"><span class="annot"><span class="annottext">[m a]
+</span><a href="#local-6989586621679214704"><span class="hs-identifier hs-var">xs</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">m a -&gt; (Async m a -&gt; m b) -&gt; m b
+forall a b. m a -&gt; (Async m a -&gt; m b) -&gt; m b
+forall (m :: * -&gt; *) a b.
+MonadAsync m =&gt;
+m a -&gt; (Async m a -&gt; m b) -&gt; m b
+</span><span class="hs-identifier hs-var">withAsync</span></span><span> </span><span class="annot"><span class="annottext">m a
+</span><a href="#local-6989586621679214703"><span class="hs-identifier hs-var">x</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621679214706"><span class="annot"><span class="annottext">Async m a
+</span><a href="#local-6989586621679214706"><span class="hs-identifier hs-var">a</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[Async m a] -&gt; [m a] -&gt; m b
+</span><a href="#local-6989586621679214699"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Async m a
+</span><a href="#local-6989586621679214706"><span class="hs-identifier hs-var">a</span></a></span><span class="annot"><span class="annottext">Async m a -&gt; [Async m a] -&gt; [Async m a]
+forall a. a -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/9f69j6hfgwz5xdil7lfn1c1mbhrhidl1-ghc-9.6.3-doc/share/doc/ghc-9.6.3/html/libraries/ghc-prim-0.10.0/src/GHC.Types.html#%3A"><span class="hs-glyph hs-var">:</span></a></span><span class="annot"><span class="annottext">[Async m a]
+</span><a href="#local-6989586621679214702"><span class="hs-keyword hs-var">as</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[m a]
+</span><a href="#local-6989586621679214704"><span class="hs-identifier hs-var">xs</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-122"></span></pre></body></html>
