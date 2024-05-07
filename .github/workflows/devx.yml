@@ -23,7 +23,7 @@ jobs:
     defaults:
       run:
         shell: devx {0}
-  
+
     runs-on: ${{ matrix.platform == 'x86_64-linux' && 'ubuntu-latest' || 'macos-latest' }}
 
     strategy:
@@ -73,7 +73,7 @@ jobs:
       run: cabal update
 
     - name: Configure build
-      run: |      
+      run: |
         cp .github/workflows/cabal.project.local.ci cabal.project.local
         echo "# cabal.project.local"
         cat cabal.project.local
@@ -128,8 +128,9 @@ jobs:
       env:
         KEEP_WORKSPACE: 1
       run: |
-        export TMPDIR="${{ runner.temp }}"
-        export TMP="${{ runner.temp }}"
+        # UNCOMMENTME: Artificially make the tests fail to test "Tar failed test workspaces"
+        # export TMPDIR="${{ runner.temp }}"
+        # export TMP="${{ runner.temp }}"
         cabal test cardano-testnet cardano-node cardano-node-chairman cardano-submit-api
 
     - name: Tar failed tests workspaces
