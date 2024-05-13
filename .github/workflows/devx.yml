@@ -25,10 +25,10 @@ jobs:
         shell: devx {0}
     env:
       CABAL_AWS_ACCESS_KEY_ID: ${{ secrets.CABAL_AWS_ACCESS_KEY_ID }}
-      CABAL_AWS_SECRET_ACCESS_KEY: ${{ secrets.CABAL_AWS_SECRET_ACCESS_KEY }}      
+      CABAL_AWS_SECRET_ACCESS_KEY: ${{ secrets.CABAL_AWS_SECRET_ACCESS_KEY }}
       # Modify this value to "invalidate" the cabal cache.
       CABAL_CACHE_VERSION: "2024-04-24"
-  
+
     runs-on: ${{ matrix.platform == 'x86_64-linux' && 'ubuntu-latest' || 'macos-latest' }}
 
     strategy:
@@ -74,12 +74,12 @@ jobs:
       run: |
         mkdir ~/bin
         case "$(uname -m)-$(uname -o)" in
-          arm64-Darwin) 
+          arm64-Darwin)
             curl -L https://ci.zw3rk.com/job/input-output-hk-haskell-nix-example/pullrequest-2/aarch64-darwin.cabal-install-static/latest/download/1 | gunzip > ~/bin/cabal
-            ;;          
+            ;;
           x86_64-Darwin)
             curl -L https://ci.zw3rk.com/job/input-output-hk-haskell-nix-example/pullrequest-2/x86_64-darwin.cabal-install-static/latest/download/1 | gunzip > ~/bin/cabal
-            ;;          
+            ;;
           x86_64-GNU/Linux)
             curl -L https://ci.zw3rk.com/job/input-output-hk-haskell-nix-example/pullrequest-2/x86_64-linux.cabal-install-static/latest/download/1 | gunzip > ~/bin/cabal
             ;;
@@ -90,7 +90,7 @@ jobs:
       run: ~/bin/cabal update
 
     - name: Configure build
-      run: |      
+      run: |
         cp .github/workflows/cabal.project.local.ci cabal.project.local
         echo "# cabal.project.local"
         cat cabal.project.local
@@ -144,9 +144,9 @@ jobs:
     - name: Run tests
       env:
         KEEP_WORKSPACE: 1
+        TMPDIR: ${{ runner.temp }}
+        TMP: ${{ runner.temp }}
       run: |
-        export TMPDIR="${{ runner.temp }}"
-        export TMP="${{ runner.temp }}"
         ~/bin/cabal test cardano-testnet cardano-node cardano-node-chairman cardano-submit-api
 
     - name: Tar failed tests workspaces
